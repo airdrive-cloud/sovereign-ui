@@ -1,7 +1,29 @@
 version: '3.8'
 
 services:
-  backend:
+  headscale:
+    image: 'headscale/headscale:latest'
+    container_name: 'headscale'
+    restart: 'unless-stopped'
+    command: 'serve'
+    volumes:
+      - './data:/var/lib/headscale'
+      - './configs/headscale:/etc/headscale'
+    environment:
+      TZ: 'America/Edmonton'
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.headscale.rule=Host(`airos.one`)"
+      - "traefik.http.routers.headscale.tls.certresolver=myresolver"
+      - "traefik.http.routers.headscale.entrypoints=websecure"
+      - "traefik.http.routers.headscale.tls=true"
+      - "traefik.http.services.headscale.loadbalancer.server.port=8080"
+
+  # -----------------------------
+  # 🔥 SOVEREIGN UI - BACKEND
+  # -----------------------------
+  sovereign-backend:
+    image: naude/sovereign-ui-backend:latest
     build: ./backend
     container_name: sovereign-ui-backend
     environment:
@@ -10,17 +32,21 @@ services:
     volumes:
       - ./backend/.env:/root/.env
     networks:
-      - headscale-with-headplane_default
+      - default
     depends_on:
       - headscale
 
-  frontend:
+  # -----------------------------
+  # 🔥 SOVEREIGN UI - FRONTEND
+  # -----------------------------
+  sovereign-frontend:
+    image: naude/sovereign-ui-frontend:latest
     build: ./frontend
     container_name: sovereign-ui-frontend
     networks:
-      - headscale-with-headplane_default
+      - default
     depends_on:
-      - backend
+      - sovereign-backend
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.sovereign.rule=Host(`ui.airos.one`)"
@@ -29,6 +55,34 @@ services:
       - "traefik.http.routers.sovereign.tls.certresolver=myresolver"
       - "traefik.http.services.sovereign.loadbalancer.server.port=80"
 
+  # -----------------------------
+  # 🔥 TRAEFIK (unchanged)
+  # -----------------------------
+  traefik:
+    image: "traefik:v3.3"
+    container_name: "traefik"
+    restart: 'unless-stopped'
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entryPoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entryPoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.myresolver.acme.email=support@infocus.one"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "./letsencrypt:/letsencrypt"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+# 👇 one shared network
 networks:
-  headscale-with-headplane_default:
-    external: true
+  default:
+    driver: bridge
+
