@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: sovereign-ui-backend
+    environment:
+      - HEADSCALE_API_URL=http://host.docker.internal:8080 # Use host.docker.internal if Headscale is on the same host as Docker
+      - HEADSCALE_API_KEY=${HEADSCALE_API_KEY}
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./backend/.env:/root/.env # Mount the .env file
+    depends_on:
+      - frontend
+
+  frontend:
+    build: ./frontend
+    container_name: sovereign-ui-frontend
+    ports:
+      - "80:80"
